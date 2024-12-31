@@ -1,0 +1,180 @@
+﻿@page "/counter"
+@using NHapi.Base.Model
+@using NHapi.Base.Parser
+@using TestDataGeneratorHybrid.ViewModels
+
+<h1>HL7 Reader</h1>
+<RadzenDataGrid AllowFiltering="true" AllowColumnResize="true" AllowAlternatingRows="false" FilterMode="FilterMode.Advanced" AllowSorting="true" PageSize="5" AllowPaging="true" PagerHorizontalAlign="HorizontalAlign.Left" ShowPagingSummary="true"
+                Data="@segments" ColumnWidth="300px" LogicalFilterOperator="LogicalFilterOperator.Or" SelectionMode="DataGridSelectionMode.Single" @bind-Value=@selectedSegments>
+    <Columns>
+        <RadzenDataGridColumn Property="@nameof(SegmentModel.ID)" Filterable="false" Title="File Name" Frozen="true" Width="80px" TextAlign="TextAlign.Center" />
+        <RadzenDataGridColumn Property="@nameof(SegmentModel.SegmentName)" Title="" Frozen="true" Width="160px" />
+    </Columns>
+</RadzenDataGrid>
+
+
+<RadzenDataGrid AllowFiltering="true" AllowColumnResize="true" AllowAlternatingRows="false" FilterMode="FilterMode.Advanced" AllowSorting="true" PageSize="5" AllowPaging="true" PagerHorizontalAlign="HorizontalAlign.Left" ShowPagingSummary="true"
+                Data="@segments" ColumnWidth="300px" LogicalFilterOperator="LogicalFilterOperator.Or" SelectionMode="DataGridSelectionMode.Single" @bind-Value=@selectedSegments>
+    <Columns>
+        <RadzenDataGridColumn Property="@nameof(SegmentModel.ID)" Filterable="false" Title="ID" Frozen="true" Width="80px" TextAlign="TextAlign.Center" />
+        <RadzenDataGridColumn Property="@nameof(SegmentModel.SegmentName)" Title="First Name" Frozen="true" Width="160px" />
+    </Columns>
+</RadzenDataGrid>
+
+@if (selectedSegments.FirstOrDefault() is not null)
+{
+    <RadzenDataGrid AllowFiltering="true" AllowColumnResize="true" AllowAlternatingRows="false" FilterMode="FilterMode.Advanced" AllowSorting="true" PageSize="5" AllowPaging="true" PagerHorizontalAlign="HorizontalAlign.Left" ShowPagingSummary="true"
+                    Data="@selectedSegments.FirstOrDefault().FieldList" ColumnWidth="300px" LogicalFilterOperator="LogicalFilterOperator.Or" SelectionMode="DataGridSelectionMode.Single" @bind-Value=@selectedField>
+        <Columns>
+
+            <RadzenDataGridColumn Property="@nameof(FieldModel.FieldDescription)" Filterable="false" Title="Fieldname" Frozen="true" Width="80px" TextAlign="TextAlign.Center" />
+            <RadzenDataGridColumn Property="@nameof(FieldModel.Value)" Title="Field Value" Frozen="true" Width="160px" />
+        </Columns>
+    </RadzenDataGrid>
+    
+}
+
+
+
+
+<RadzenCard Style="overflow: scroll">
+    <RadzenText TextStyle="TextStyle.Subtitle2" TagName="TagName.H3">HL7 File</RadzenText>
+    <RadzenTextArea Disabled="true" @bind-Value=@fileContent Cols="30" Rows="3" aria-label="Disabled TextArea with 3 rows and 30 columns" />
+</RadzenCard>
+
+
+
+@code {
+
+
+    List<Hl7FileModel> hl7Files = new List<Hl7FileModel>();
+
+
+    List<SegmentModel> segments = new List<SegmentModel>();
+
+    IList<SegmentModel> selectedSegments = new List<SegmentModel>();
+
+
+    IList<FieldModel> selectedField = new List<FieldModel>();
+
+    string fileContent = "";
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+
+        fileContent = await readFileAsync();
+
+        await readHl7File();
+        Console.WriteLine(fileContent);
+
+    }
+
+    private string  getfilePathPlattformIndependend()
+    {
+        string relativePath = Path.Combine("Resources", "Files", "HL7TestFiles", "Sample-ADT.hl7");
+        return relativePath;
+    }
+
+
+    private async Task<string> readFileAsync()
+    {
+        // Relative path to the file in the Resources folder
+        string relativePath = Path.Combine("Resources","Files", "HL7TestFiles", "Sample-ADT.hl7");
+
+        // Open the file using FileSystem
+        using var stream = await FileSystem.OpenAppPackageFileAsync(relativePath);
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync();
+    }
+
+    /// <summary>
+    /// NHAPI Read File
+    /// </summary>
+    /// <returns></returns>
+    private async Task readHl7File()
+    {
+
+        //NHAPI Implementation:
+
+
+        List<SegmentModel> segmentList = new List<SegmentModel>();
+
+        var parser = new PipeParser();
+
+        IMessage parsedMessage = parser.Parse(await readFileAsync());
+
+        string messageAsString = parsedMessage.ToString();
+
+
+        List<string> segmentNames = parsedMessage.Names.ToList();
+
+
+        foreach (string segmentName in segmentNames)
+
+        {
+            int count = 1;
+
+            SegmentModel currentSegment = new SegmentModel();
+            currentSegment.ID = count;
+            currentSegment.SegmentName = segmentName;
+
+
+            List<IStructure> structures = parsedMessage.GetAll(segmentName).ToList();
+
+            foreach (IStructure sturcture in structures)
+            {
+                AbstractSegment abstractsegment = (AbstractSegment)sturcture;
+
+                for (int i = 1; i <= abstractsegment.NumFields(); i++)
+                {
+                    FieldModel fieldModel = new FieldModel();
+                    fieldModel.FieldNumber = i;
+                    fieldModel.Value = abstractsegment.GetField(i).ToString();
+                    fieldModel.FieldDescription = abstractsegment.GetFieldDescription(i);
+                    currentSegment.addField(fieldModel);
+                }
+
+            }
+            count++;
+
+
+            segmentList.Add(currentSegment);
+
+
+        }
+        this.segments = segmentList;
+
+    }
+
+
+
+    private List<Hl7FileModel> ReadAllFilesOfFolder()
+    {
+
+        List<Hl7FileModel> listOfHl7Files = new List<Hl7FileModel>();
+
+
+        string relativePath = Path.Combine("Resources", "Files", "HL7TestFiles");
+
+        string folderPath = @"C:\YourFolderPath";
+
+        // Get all files in the folder (and optionally subfolders)
+        string[] files = Directory.GetFiles(relativePath, "*.*", SearchOption.AllDirectories);
+
+        // Iterate through each file and save the filename and path
+        foreach (string file in files)
+        {
+
+            Hl7FileModel hl7File = new Hl7FileModel();
+
+            hl7File.FileName = Path.GetFileName(file);
+            hl7File.FilePath = file;
+
+            listOfHl7Files.Add(hl7File);
+        }
+
+        return listOfHl7Files;
+    }
+}

@@ -1,0 +1,91 @@
+﻿@page "/weather"
+@using System.Collections.Concurrent
+
+<h1>File Search</h1>
+
+<p>This component demonstrates showing data.</p>
+
+
+@code {
+
+
+
+
+    public async Task<ConcurrentBag<string>> FindFilesContainingStringAsync(
+        string directoryPath,
+        string searchString,
+        long maxFileSizeInBytes,
+        string[] allowedExtensions,
+        IProgress<double>? progress = null)
+    {
+        var matchingFiles = new ConcurrentBag<string>();
+        var errorLog = new ConcurrentBag<string>();
+
+        // Get filtered files
+        var files = Directory.EnumerateFiles(directoryPath, "*.*", SearchOption.AllDirectories)
+            .Where(file =>
+            {
+                var fileInfo = new System.IO.FileInfo(file);
+                return allowedExtensions.Contains(fileInfo.Extension, StringComparer.OrdinalIgnoreCase)
+                       && fileInfo.Length <= maxFileSizeInBytes;
+            }).ToList(); // Convert to list for progress reporting
+
+        int totalFiles = files.Count;
+        int processedFiles = 0;
+
+        // Use Parallel.ForEach for concurrent processing
+        await Task.Run(() =>
+        {
+            Parallel.ForEach(files, (file) =>
+            {
+                try
+                {
+                    if (FileContainsString(file, searchString))
+                    {
+                        matchingFiles.Add(file);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errorLog.Add($"Error processing file {file}: {ex.Message}");
+                }
+                finally
+                {
+                    // Report progress
+                    int currentProcessed = Interlocked.Increment(ref processedFiles);
+                    progress?.Report((double)currentProcessed / totalFiles * 100);
+                }
+            });
+        });
+
+        // Log errors if any
+        if (errorLog.Count > 0)
+        {
+            string logFilePath = Path.Combine(directoryPath, "ErrorLog.txt");
+            await File.WriteAllLinesAsync(logFilePath, errorLog);
+            Console.WriteLine($"Errors logged to: {logFilePath}");
+        }
+
+        return matchingFiles;
+    }
+
+
+  
+
+
+    private bool FileContainsString(string filePath, string searchString)
+    {
+        using var reader = new StreamReader(filePath);
+        string line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (line.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+  
+}
